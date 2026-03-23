@@ -20,7 +20,16 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
-  console.error('Error:', err);
+  // Structured logging (consider using a proper logger in production)
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    error: {
+      message: err.message,
+      code: err instanceof AppError ? err.code : 'UNKNOWN',
+      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
+    },
+  };
+  console.error(JSON.stringify(logEntry));
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
@@ -28,7 +37,6 @@ export function errorHandler(
       error: {
         code: err.code,
         message: err.message,
-        details: err.details,
       },
     });
     return;
@@ -45,7 +53,6 @@ export function errorHandler(
           error: {
             code: 'CONFLICT',
             message: 'Resource already exists',
-            details: prismaError.meta,
           },
         });
         return;
@@ -61,14 +68,12 @@ export function errorHandler(
     }
   }
 
-  // Default error
+  // Default error - never expose internal details
   res.status(500).json({
     success: false,
     error: {
       code: 'INTERNAL_ERROR',
-      message: process.env.NODE_ENV === 'production' 
-        ? 'Internal server error' 
-        : err.message,
+      message: 'An unexpected error occurred',
     },
   });
 }

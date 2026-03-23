@@ -73,19 +73,47 @@ export async function createPost(req: Request & AuthRequest, res: Response, next
     const authorId = req.user!.id;
     const { title, slug, excerpt, content, coverImage, status, categoryIds } = req.body;
 
-    if (!title || !content) {
+    // Validation
+    const errors: string[] = [];
+    
+    if (!title || typeof title !== 'string') {
+      errors.push('Title is required');
+    } else if (title.trim().length < 3) {
+      errors.push('Title must be at least 3 characters');
+    } else if (title.trim().length > 200) {
+      errors.push('Title must be less than 200 characters');
+    }
+
+    if (!content || typeof content !== 'string') {
+      errors.push('Content is required');
+    }
+
+    if (excerpt && typeof excerpt === 'string' && excerpt.length > 500) {
+      errors.push('Excerpt must be less than 500 characters');
+    }
+
+    const validStatuses = ['DRAFT', 'PUBLISHED', 'SCHEDULED', 'ARCHIVED'];
+    if (status && !validStatuses.includes(status.toUpperCase())) {
+      errors.push(`Status must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    if (categoryIds && !Array.isArray(categoryIds)) {
+      errors.push('Category IDs must be an array');
+    }
+
+    if (errors.length > 0) {
       res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Title and content are required',
+          message: errors.join('; '),
         },
       });
       return;
     }
 
     const post = await postService.createPost(
-      { title, slug, excerpt, content, coverImage, status, categoryIds },
+      { title: title.trim(), slug, excerpt, content, coverImage, status: status?.toUpperCase(), categoryIds },
       authorId
     );
 

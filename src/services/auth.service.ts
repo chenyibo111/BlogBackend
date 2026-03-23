@@ -1,8 +1,12 @@
+import path from 'path';
+import fs from 'fs';
 import prisma from '../utils/prisma';
 import { hashPassword, comparePassword } from '../utils/password';
 import { generateAccessToken, generateRefreshToken, getTokenExpiryInSeconds, verifyToken } from '../utils/jwt';
 import type { RegisterInput, LoginInput, AuthResponse, UserPublic } from '../types';
 import { AppError } from '../middleware/errorHandler';
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
 function toUserPublic(user: any): UserPublic {
   return {
@@ -140,8 +144,22 @@ export async function getCurrentUser(userId: string): Promise<UserPublic | null>
 
 export async function updateProfile(
   userId: string,
-  data: { name?: string; bio?: string; avatar?: string }
+  data: { name?: string; bio?: string; avatar?: string; email?: string }
 ): Promise<UserPublic> {
+  // If email is being updated, check for duplicates
+  if (data.email) {
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: data.email,
+        NOT: { id: userId },
+      },
+    });
+
+    if (existingUser) {
+      throw new AppError('Email is already in use by another account', 409, 'CONFLICT');
+    }
+  }
+
   const user = await prisma.user.update({
     where: { id: userId },
     data,
@@ -158,4 +176,42 @@ export async function updateProfile(
   });
 
   return toUserPublic(user);
+}
+
+/**
+ * Delete user account and all associated files
+ * Fixes #29: Ensures files are cleaned up when user is deleted
+ */
+export async function deleteAccount(userId: string): Promise<void> {
+  // 1. Get all media files uploaded by this user
+  const mediaFiles = await prisma.media.findMany({
+    where: { uploadedById: userId },
+    select: { filename: true },
+  });
+
+  // 2. Delete all physical files first
+  // We do this BEFORE database deletion to avoid orphan files if DB fails
+  const deleteErrors: string[] = [];
+  for (const media of mediaFiles) {
+    try {
+      const filepath = path.join(UPLOAD_DIR, media.filename);
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+      }
+    } catch (error) {
+      // Log but continue - we'll report all failures at the end
+      deleteErrors.push(media.filename);
+    }
+  }
+
+  // 3. Delete user (cascade will handle media records in DB)
+  await prisma.user.delete({
+    where: { id: userId },
+  });
+
+  // 4. Report any file deletion errors (non-critical, data is cleaned)
+  if (deleteErrors.length > 0) {
+    console.error(`[Account] User ${userId} deleted, but some files failed to delete:`, deleteErrors);
+    // Could add to cleanup queue for later retry
+  }
 }
