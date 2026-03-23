@@ -215,3 +215,17 @@ export async function deleteAccount(userId: string): Promise<void> {
     // Could add to cleanup queue for later retry
   }
 }
+
+/**
+ * Logout - add token to blacklist
+ */
+export async function logout(token: string): Promise<void> {
+  const { tokenBlacklist } = await import('../utils/tokenBlacklist');
+  const jwt = await import('jsonwebtoken');
+  
+  // Get token expiry
+  const decoded = jwt.decode(token) as any;
+  const expiresAt = decoded?.exp || Math.floor(Date.now() / 1000) + 7200; // Default 2 hours
+  
+  tokenBlacklist.add(token, expiresAt);
+}

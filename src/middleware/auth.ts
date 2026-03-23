@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
+import { tokenBlacklist } from '../utils/tokenBlacklist';
 import prisma from '../utils/prisma';
 import type { AuthRequest, UserPublic } from '../types';
 
@@ -23,6 +24,19 @@ export async function authMiddleware(
     }
     
     const token = authHeader.substring(7);
+    
+    // Check if token is blacklisted
+    if (tokenBlacklist.isBlacklisted(token)) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Token has been revoked',
+        },
+      });
+      return;
+    }
+    
     const payload = verifyToken(token);
     
     if (!payload) {

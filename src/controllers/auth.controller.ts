@@ -185,3 +185,22 @@ export async function refreshToken(req: Request, res: Response, next: NextFuncti
     next(error);
   }
 }
+
+export async function logout(req: Request & AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.substring(7);
+    
+    if (token) {
+      await authService.logout(token);
+    }
+
+    res.json({
+      success: true,
+      data: { message: 'Logged out successfully' },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+}

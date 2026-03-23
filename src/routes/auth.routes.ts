@@ -19,6 +19,7 @@ router.post('/login', authController.login);
 router.post('/refresh', authController.refreshToken);
 
 // Protected routes
+router.post('/logout', authMiddleware, authController.logout);
 router.get('/me', authMiddleware, authController.getMe);
 router.patch('/profile', authMiddleware, authController.updateProfile);
 router.post('/avatar', authMiddleware, upload.single('avatar'), authController.uploadAvatar);
