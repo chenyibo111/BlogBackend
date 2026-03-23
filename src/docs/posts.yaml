@@ -1,0 +1,493 @@
+# Posts API Documentation
+
+paths:
+  /posts:
+    get:
+      tags:
+        - Posts
+      summary: List all posts
+      description: |
+        Retrieves a paginated list of posts. 
+        
+        **Access Control:**
+        - Unauthenticated users: Only see PUBLISHED posts
+        - AUTHOR role: See own posts (all statuses) + others' PUBLISHED posts
+        - ADMIN/EDITOR: See all posts
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of posts per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, PUBLISHED, SCHEDULED, ARCHIVED]
+          description: Filter by post status (ADMIN/EDITOR only)
+        - name: authorId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by author ID
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by category ID
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search in title, excerpt, and content
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [publishedAt, createdAt, updatedAt, views]
+            default: publishedAt
+          description: Field to sort by
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          description: Sort order
+      responses:
+        '200':
+          description: Posts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPosts'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Posts
+      summary: Create a new post
+      description: Creates a new blog post. Requires authentication.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - content
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  example: My First Blog Post
+                slug:
+                  type: string
+                  description: URL-friendly identifier (auto-generated if not provided)
+                  example: my-first-blog-post
+                excerpt:
+                  type: string
+                  maxLength: 500
+                  example: A brief introduction to my blog...
+                content:
+                  type: string
+                  description: HTML content of the post
+                  example: <p>This is the full content of my blog post...</p>
+                coverImage:
+                  type: string
+                  description: URL to cover image
+                  example: http://example.com/cover.jpg
+                status:
+                  type: string
+                  enum: [DRAFT, PUBLISHED, SCHEDULED, ARCHIVED]
+                  default: DRAFT
+                categoryIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: Array of category IDs to associate with the post
+                publishedAt:
+                  type: string
+                  format: date-time
+                  description: Scheduled publish date (for SCHEDULED status)
+            examples:
+              draft:
+                summary: Create a draft post
+                value:
+                  title: My Draft Post
+                  content: <p>Work in progress...</p>
+                  status: DRAFT
+              published:
+                summary: Create and publish a post
+                value:
+                  title: Hello World
+                  slug: hello-world
+                  excerpt: My first published post
+                  content: <p>Welcome to my blog!</p>
+                  coverImage: http://example.com/cover.jpg
+                  status: PUBLISHED
+      responses:
+        '201':
+          description: Post created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Post'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /posts/{id}:
+    get:
+      tags:
+        - Posts
+      summary: Get a post by ID
+      description: Retrieves a single post by its numeric ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Post ID
+      responses:
+        '200':
+          description: Post retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Post'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - Posts
+      summary: Update a post
+      description: |
+        Updates an existing post. Users can only update their own posts unless they are ADMIN or EDITOR.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Post ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                slug:
+                  type: string
+                excerpt:
+                  type: string
+                  maxLength: 500
+                content:
+                  type: string
+                coverImage:
+                  type: string
+                status:
+                  type: string
+                  enum: [DRAFT, PUBLISHED, SCHEDULED, ARCHIVED]
+                categoryIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+            examples:
+              updateContent:
+                summary: Update post content
+                value:
+                  content: <p>Updated content here...</p>
+              publish:
+                summary: Publish a draft
+                value:
+                  status: PUBLISHED
+      responses:
+        '200':
+          description: Post updated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Post'
+        '403':
+          description: Forbidden - cannot edit others' posts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Posts
+      summary: Delete a post
+      description: |
+        Deletes a post. Users can only delete their own posts unless they are ADMIN or EDITOR.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Post ID
+      responses:
+        '204':
+          description: Post deleted successfully
+        '403':
+          description: Forbidden - cannot delete others' posts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /posts/slug/{slug}:
+    get:
+      tags:
+        - Posts
+      summary: Get a post by slug
+      description: Retrieves a single post by its URL slug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Post slug
+          example: hello-world
+      responses:
+        '200':
+          description: Post retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Post'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /posts/archive:
+    get:
+      tags:
+        - Posts
+      summary: Get post archive
+      description: Retrieves all posts grouped by year for archive navigation
+      responses:
+        '200':
+          description: Archive retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            year:
+                              type: integer
+                              example: 2024
+                            posts:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  slug:
+                                    type: string
+                                  title:
+                                    type: string
+                                  publishedAt:
+                                    type: string
+                                    format: date-time
+                                  status:
+                                    type: string
+                            count:
+                              type: integer
+
+  /posts/{id}/publish:
+    post:
+      tags:
+        - Posts
+      summary: Publish a post
+      description: Changes post status to PUBLISHED and sets publishedAt date
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Post ID
+      responses:
+        '200':
+          description: Post published successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Post'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /posts/{id}/unpublish:
+    post:
+      tags:
+        - Posts
+      summary: Unpublish a post
+      description: Changes post status to DRAFT
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Post ID
+      responses:
+        '200':
+          description: Post unpublished successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Post'
+        '404':
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /posts/related/{id}:
+    get:
+      tags:
+        - Posts
+      summary: Get related posts
+      description: Retrieves posts related to the specified post based on categories
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Post ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 3
+            maximum: 10
+          description: Maximum number of related posts to return
+      responses:
+        '200':
+          description: Related posts retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Post'

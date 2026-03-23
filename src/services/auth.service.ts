@@ -1,6 +1,6 @@
 import prisma from '../utils/prisma';
 import { hashPassword, comparePassword } from '../utils/password';
-import { generateAccessToken, generateRefreshToken, getTokenExpiryInSeconds } from '../utils/jwt';
+import { generateAccessToken, generateRefreshToken, getTokenExpiryInSeconds, verifyToken } from '../utils/jwt';
 import type { RegisterInput, LoginInput, AuthResponse, UserPublic } from '../types';
 import { AppError } from '../middleware/errorHandler';
 
@@ -27,15 +27,20 @@ export async function register(input: RegisterInput): Promise<AuthResponse> {
     throw new AppError('Email already registered', 409, 'CONFLICT');
   }
 
+  // Check if this is the first user (auto-promote to ADMIN)
+  const userCount = await prisma.user.count();
+  const role = userCount === 0 ? 'ADMIN' : 'AUTHOR';
+
   // Hash password
   const hashedPassword = await hashPassword(input.password);
 
-  // Create user
+  // Create user with appropriate role
   const user = await prisma.user.create({
     data: {
       email: input.email,
       name: input.name,
       password: hashedPassword,
+      role,
     },
   });
 
@@ -83,6 +88,35 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       refreshToken,
       expiresIn: getTokenExpiryInSeconds(accessToken),
     },
+  };
+}
+
+export async function refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  // Verify the refresh token
+  const payload = verifyToken(refreshToken);
+  
+  if (!payload) {
+    throw new AppError('Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+  }
+
+  // Check if user still exists
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+  });
+
+  if (!user) {
+    throw new AppError('User not found', 401, 'UNAUTHORIZED');
+  }
+
+  // Generate new tokens
+  const userPublic = toUserPublic(user);
+  const newAccessToken = generateAccessToken(userPublic);
+  const newRefreshToken = generateRefreshToken(userPublic);
+
+  return {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+    expiresIn: getTokenExpiryInSeconds(newAccessToken),
   };
 }
 

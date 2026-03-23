@@ -158,3 +158,30 @@ export async function uploadAvatar(req: Request & AuthRequest, res: Response, ne
     next(error);
   }
 }
+
+export async function refreshToken(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Refresh token is required',
+        },
+      });
+      return;
+    }
+
+    const tokens = await authService.refreshTokens(refreshToken);
+
+    res.json({
+      success: true,
+      data: tokens,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+}

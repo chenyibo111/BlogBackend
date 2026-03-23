@@ -1,0 +1,182 @@
+# Upload API Documentation
+
+paths:
+  /upload:
+    post:
+      tags:
+        - Upload
+      summary: Upload a file
+      description: |
+        Uploads an image file to the server. 
+        
+        **Allowed file types:** JPEG, PNG, GIF, WebP
+        
+        **Maximum file size:** 10MB (configurable via MAX_FILE_SIZE env var)
+        
+        Files are stored with a unique filename to prevent collisions and path traversal attacks.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file to upload
+            encoding:
+              file:
+                contentType: image/jpeg, image/png, image/gif, image/webp
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          file:
+                            $ref: '#/components/schemas/Media'
+                          url:
+                            type: string
+                            description: Full URL to access the uploaded file
+                            example: http://47.253.190.162/uploads/1712345678-abc123.jpg
+        '400':
+          description: Invalid file type or file too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidType:
+                  summary: Invalid file type
+                  value:
+                    success: false
+                    error:
+                      code: INVALID_FILE_TYPE
+                      message: Invalid file type. Allowed: jpeg, png, gif, webp
+                tooLarge:
+                  summary: File too large
+                  value:
+                    success: false
+                    error:
+                      code: FILE_TOO_LARGE
+                      message: File size exceeds limit (10MB)
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /upload/media:
+    get:
+      tags:
+        - Upload
+      summary: Get media library
+      description: Retrieves a paginated list of files uploaded by the authenticated user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of items per page
+      responses:
+        '200':
+          description: Media library retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Media'
+                          total:
+                            type: integer
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          totalPages:
+                            type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /upload/media/{id}:
+    delete:
+      tags:
+        - Upload
+      summary: Delete a media file
+      description: |
+        Deletes a media file. Users can only delete files they uploaded.
+        
+        The deletion process:
+        1. First deletes the database record
+        2. Then attempts to delete the physical file
+        
+        If file deletion fails after database deletion, the data remains consistent.
+        Orphan files can be cleaned up later.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Media file ID
+      responses:
+        '204':
+          description: Media deleted successfully
+        '403':
+          description: Forbidden - can only delete own files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Media not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

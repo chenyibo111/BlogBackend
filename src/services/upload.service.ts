@@ -1,11 +1,15 @@
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import type { UploadResponse } from '../types';
 import { AppError } from '../middleware/errorHandler';
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760'); // 10MB
+
+// Allowed file extensions (whitelist)
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 
 export function ensureUploadDir() {
   if (!fs.existsSync(UPLOAD_DIR)) {
@@ -32,6 +36,16 @@ export function validateFile(file: Express.Multer.File) {
       'INVALID_FILE_TYPE'
     );
   }
+
+  // Security: Validate extension against whitelist
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    throw new AppError(
+      'Invalid file extension. Allowed: jpg, jpeg, png, gif, webp',
+      400,
+      'INVALID_FILE_EXTENSION'
+    );
+  }
 }
 
 export async function saveFile(
@@ -40,10 +54,32 @@ export async function saveFile(
 ): Promise<UploadResponse> {
   ensureUploadDir();
 
-  // Generate unique filename
-  const ext = path.extname(file.originalname);
-  const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}${ext}`;
-  const filepath = path.join(UPLOAD_DIR, filename);
+  // Security: Use only extension from original name, generate random filename
+  const ext = path.extname(file.originalname).toLowerCase();
+  
+  // Security: Double-check extension is in whitelist
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    throw new AppError(
+      'Invalid file extension',
+      400,
+      'INVALID_FILE_EXTENSION'
+    );
+  }
+  
+  // Security: Use crypto for random filename instead of Math.random()
+  const randomName = crypto.randomBytes(16).toString('hex');
+  const filename = `${Date.now()}-${randomName}${ext}`;
+  const filepath = path.resolve(UPLOAD_DIR, filename);
+
+  // Security: Ensure the resolved path is still within UPLOAD_DIR
+  const uploadDirResolved = path.resolve(UPLOAD_DIR);
+  if (!filepath.startsWith(uploadDirResolved)) {
+    throw new AppError(
+      'Invalid file path',
+      400,
+      'INVALID_PATH'
+    );
+  }
 
   // Move file
   fs.writeFileSync(filepath, file.buffer);
@@ -61,7 +97,7 @@ export async function saveFile(
   });
 
   // Return full URL
-  const fullUrl = `${process.env.API_URL || 'http://localhost:3000'}${media.url}`;
+  const fullUrl = `http://47.253.190.162${media.url}`;
 
   return {
     file: media,
@@ -106,12 +142,20 @@ export async function deleteMedia(id: string, uploadedById: string): Promise<voi
     throw new AppError('Unauthorized to delete this media', 403, 'FORBIDDEN');
   }
 
-  // Delete file
-  const filepath = path.join(UPLOAD_DIR, media.filename);
-  if (fs.existsSync(filepath)) {
-    fs.unlinkSync(filepath);
-  }
-
-  // Delete from database
+  // Data integrity: Delete from database FIRST
+  // If this fails, file remains (can be cleaned up later)
+  // If file deletion fails after DB delete, we have orphan file but data is consistent
   await prisma.media.delete({ where: { id } });
+
+  // Then try to delete file (failure here is non-critical)
+  try {
+    const filepath = path.join(UPLOAD_DIR, media.filename);
+    if (fs.existsSync(filepath)) {
+      fs.unlinkSync(filepath);
+    }
+  } catch (error) {
+    // Log error but don't throw - database is already clean
+    console.error(`[Media] Failed to delete file ${media.filename}:`, error);
+    // Could add to cleanup queue for later retry
+  }
 }

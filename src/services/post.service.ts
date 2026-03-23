@@ -1,7 +1,36 @@
 import prisma from '../utils/prisma';
 import { generateSlug } from '../utils/slug';
+import { cache, CacheKeys, CacheTTL } from '../utils/cache';
 import type { PostCreateInput, PostUpdateInput, PostFilter, PostWithAuthor, UserPublic } from '../types';
 import { AppError } from '../middleware/errorHandler';
+
+// Type for archive response
+interface ArchivePost {
+  id: number;
+  slug: string;
+  title: string;
+  publishedAt: Date | null;
+  createdAt: Date;
+  status: string;
+}
+
+interface ArchiveYear {
+  year: number;
+  posts: ArchivePost[];
+  count: number;
+}
+
+// Helper to invalidate post-related caches
+function invalidatePostCache(postId?: number, slug?: string) {
+  cache.deletePattern('^posts:list');
+  cache.delete(CacheKeys.archive());
+  if (postId) {
+    cache.delete(CacheKeys.post(postId));
+  }
+  if (slug) {
+    cache.delete(CacheKeys.postBySlug(slug));
+  }
+}
 
 export async function getPosts(filter: PostFilter, currentUser?: UserPublic | null) {
   const {
@@ -85,6 +114,14 @@ export async function getPosts(filter: PostFilter, currentUser?: UserPublic | nu
 }
 
 export async function getPostById(id: number, currentUser?: UserPublic | null): Promise<PostWithAuthor> {
+  // Check cache first (only for public/published posts)
+  if (!currentUser || currentUser.role === 'AUTHOR') {
+    const cached = cache.get<PostWithAuthor>(CacheKeys.post(id));
+    if (cached && cached.status === 'PUBLISHED') {
+      return cached;
+    }
+  }
+
   const post = await prisma.post.findUnique({
     where: { id },
     include: {
@@ -119,10 +156,25 @@ export async function getPostById(id: number, currentUser?: UserPublic | null): 
   }
   // ADMIN/EDITOR 可以看到所有文章
 
-  return post as PostWithAuthor;
+  const result = post as PostWithAuthor;
+  
+  // Cache published posts
+  if (post.status === 'PUBLISHED') {
+    cache.set(CacheKeys.post(id), result, CacheTTL.MEDIUM);
+  }
+
+  return result;
 }
 
 export async function getPostBySlug(slug: string, currentUser?: UserPublic | null): Promise<PostWithAuthor> {
+  // Check cache first (only for public/published posts)
+  if (!currentUser || currentUser.role === 'AUTHOR') {
+    const cached = cache.get<PostWithAuthor>(CacheKeys.postBySlug(slug));
+    if (cached && cached.status === 'PUBLISHED') {
+      return cached;
+    }
+  }
+
   const post = await prisma.post.findUnique({
     where: { slug },
     include: {
@@ -157,7 +209,16 @@ export async function getPostBySlug(slug: string, currentUser?: UserPublic | nul
   }
   // ADMIN/EDITOR 可以看到所有文章
 
-  return post as PostWithAuthor;
+  const result = post as PostWithAuthor;
+  
+  // Cache published posts
+  if (post.status === 'PUBLISHED') {
+    cache.set(CacheKeys.postBySlug(slug), result, CacheTTL.MEDIUM);
+    // Also cache by ID
+    cache.set(CacheKeys.post(post.id), result, CacheTTL.MEDIUM);
+  }
+
+  return result;
 }
 
 export async function createPost(
@@ -173,6 +234,9 @@ export async function createPost(
     slug = `${slug}-${Date.now()}`;
   }
 
+  // Normalize status to uppercase
+  const normalizedStatus = input.status?.toUpperCase() as 'DRAFT' | 'PUBLISHED' | 'SCHEDULED' | 'ARCHIVED' | undefined;
+
   const post = await prisma.post.create({
     data: {
       slug,
@@ -180,9 +244,9 @@ export async function createPost(
       excerpt: input.excerpt,
       content: input.content,
       coverImage: input.coverImage,
-      status: input.status || 'DRAFT',
+      status: normalizedStatus || 'DRAFT',
       authorId,
-      publishedAt: input.status === 'PUBLISHED' ? new Date() : new Date(), // Use createdAt for drafts
+      publishedAt: normalizedStatus === 'PUBLISHED' ? new Date() : new Date(),
       categories: input.categoryIds ? {
         connect: input.categoryIds.map(id => ({ id })),
       } : undefined,
@@ -204,7 +268,12 @@ export async function createPost(
     },
   });
 
-  return post as PostWithAuthor;
+  const result = post as PostWithAuthor;
+  
+  // Invalidate cache for post lists and archive
+  invalidatePostCache();
+  
+  return result;
 }
 
 export async function updatePost(
@@ -283,7 +352,12 @@ export async function updatePost(
     },
   });
 
-  return post as PostWithAuthor;
+  const result = post as PostWithAuthor;
+  
+  // Invalidate cache
+  invalidatePostCache(id, slug);
+  
+  return result;
 }
 
 export async function deletePost(id: number, currentUser?: UserPublic): Promise<void> {
@@ -305,6 +379,9 @@ export async function deletePost(id: number, currentUser?: UserPublic): Promise<
   await prisma.post.delete({
     where: { id },
   });
+  
+  // Invalidate cache
+  invalidatePostCache(id);
 }
 
 export async function publishPost(id: number): Promise<PostWithAuthor> {
@@ -331,7 +408,12 @@ export async function publishPost(id: number): Promise<PostWithAuthor> {
     },
   });
 
-  return post as PostWithAuthor;
+  const result = post as PostWithAuthor;
+  
+  // Invalidate cache
+  invalidatePostCache(id);
+  
+  return result;
 }
 
 export async function unpublishPost(id: number): Promise<PostWithAuthor> {
@@ -358,10 +440,25 @@ export async function unpublishPost(id: number): Promise<PostWithAuthor> {
     },
   });
 
-  return post as PostWithAuthor;
+  const result = post as PostWithAuthor;
+  
+  // Invalidate cache
+  invalidatePostCache(id);
+  
+  return result;
 }
 
 export async function getArchive(currentUser?: UserPublic | null) {
+  // Only cache public archive (no user or non-admin user)
+  const shouldCache = !currentUser || currentUser.role === 'AUTHOR';
+  
+  if (shouldCache) {
+    const cached = cache.get<(ArchiveYear)>(CacheKeys.archive());
+    if (cached) {
+      return cached;
+    }
+  }
+
   const where: any = {};
   
   // 权限控制：未登录或普通用户只看已发布文章
@@ -392,9 +489,16 @@ export async function getArchive(currentUser?: UserPublic | null) {
     return acc;
   }, {} as Record<number, typeof posts>);
 
-  return Object.entries(byYear).map(([year, posts]) => ({
+  const result = Object.entries(byYear).map(([year, posts]) => ({
     year: Number(year),
     posts,
     count: posts.length,
   }));
+
+  // Cache public archive
+  if (shouldCache) {
+    cache.set(CacheKeys.archive(), result, CacheTTL.LONG);
+  }
+
+  return result;
 }

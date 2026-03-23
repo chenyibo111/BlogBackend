@@ -3,11 +3,13 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
+import swaggerUi from 'swagger-ui-express';
 
 import authRoutes from './routes/auth.routes';
 import postRoutes from './routes/post.routes';
 import uploadRoutes from './routes/upload.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { swaggerSpec } from './swagger';
 
 // Load environment variables
 dotenv.config();
@@ -62,6 +64,12 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 
+// API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Blog API Documentation',
+}));
+
 // Health check
 app.get('/health', (_req, res) => {
   res.json({
@@ -87,10 +95,12 @@ app.listen(PORT, () => {
 ║                                                  ║
 ║   Local:   http://localhost:${PORT}                ║
 ║   Health:  http://localhost:${PORT}/health         ║
+║   API Docs: http://localhost:${PORT}/api-docs      ║
 ║                                                  ║
 ║   API Endpoints:                                 ║
 ║   - POST   /api/auth/register                   ║
 ║   - POST   /api/auth/login                      ║
+║   - POST   /api/auth/refresh                    ║
 ║   - GET    /api/auth/me                         ║
 ║   - GET    /api/posts                           ║
 ║   - POST   /api/posts                           ║
