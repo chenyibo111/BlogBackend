@@ -310,17 +310,20 @@ export async function updatePost(
     }
   }
 
+  // Normalize status to uppercase
+  const normalizedStatus = input.status?.toUpperCase() as 'DRAFT' | 'PUBLISHED' | 'SCHEDULED' | 'ARCHIVED' | undefined;
+
   const data: any = {
     ...(input.title && { title: input.title }),
     ...(input.excerpt !== undefined && { excerpt: input.excerpt }),
     ...(input.content !== undefined && { content: input.content }),
     ...(input.coverImage !== undefined && { coverImage: input.coverImage }),
-    ...(input.status && { status: input.status }),
+    ...(normalizedStatus && { status: normalizedStatus }),
     ...(slug && { slug }),
   };
 
   // Set publishedAt when publishing
-  if (input.status === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
+  if (normalizedStatus === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
     data.publishedAt = new Date();
   }
 
