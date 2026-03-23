@@ -93,7 +93,7 @@ export async function createPost(req: Request & AuthRequest, res: Response, next
     }
 
     const validStatuses = ['DRAFT', 'PUBLISHED', 'SCHEDULED', 'ARCHIVED'];
-    if (status && !validStatuses.includes(status)) {
+    if (status && !validStatuses.includes(status.toUpperCase())) {
       errors.push(`Status must be one of: ${validStatuses.join(', ')}`);
     }
 
@@ -113,7 +113,7 @@ export async function createPost(req: Request & AuthRequest, res: Response, next
     }
 
     const post = await postService.createPost(
-      { title: title.trim(), slug, excerpt, content, coverImage, status, categoryIds },
+      { title: title.trim(), slug, excerpt, content, coverImage, status: status?.toUpperCase(), categoryIds },
       authorId
     );
 
