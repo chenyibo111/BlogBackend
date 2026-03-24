@@ -48,6 +48,26 @@ export function validateFile(file: Express.Multer.File) {
   }
 }
 
+/**
+ * Save an uploaded file to the media library.
+ * 
+ * #65 TODO: Image optimization
+ * Consider integrating sharp library for:
+ * - Automatic image compression
+ * - Resize large images to max dimensions
+ * - Convert to WebP for better compression
+ * - Generate thumbnails for previews
+ * 
+ * Example implementation:
+ * ```ts
+ * import sharp from 'sharp';
+ * 
+ * const optimized = await sharp(file.buffer)
+ *   .resize(2048, 2048, { fit: 'inside', withoutEnlargement: true })
+ *   .webp({ quality: 85 })
+ *   .toBuffer();
+ * ```
+ */
 export async function saveFile(
   file: Express.Multer.File,
   uploadedById: string

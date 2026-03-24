@@ -32,6 +32,18 @@ function invalidatePostCache(postId?: number, slug?: string) {
   }
 }
 
+/**
+ * Get paginated list of posts with filtering and sorting.
+ * 
+ * - Supports cursor-based pagination for large datasets
+ * - Permission-aware: unauthenticated users only see published posts
+ * - Authors see all their own posts, only published from others
+ * - Admins/Editors see all posts
+ * 
+ * @param filter - Query filters (status, authorId, categoryId, search, pagination)
+ * @param currentUser - Current authenticated user (for permission checks)
+ * @returns Paginated post list with metadata
+ */
 export async function getPosts(filter: PostFilter, currentUser?: UserPublic | null) {
   const {
     status,
@@ -174,6 +186,17 @@ export async function getPosts(filter: PostFilter, currentUser?: UserPublic | nu
   };
 }
 
+/**
+ * Get a single post by ID.
+ * 
+ * - Permission-aware: non-authors can only see published posts
+ * - Cached for published posts to improve performance
+ * 
+ * @param id - Post ID
+ * @param currentUser - Current user for permission check
+ * @returns Post with author and categories
+ * @throws AppError(404) if not found or no permission
+ */
 export async function getPostById(id: number, currentUser?: UserPublic | null): Promise<PostWithAuthor> {
   // Check cache first (only for public/published posts)
   if (!currentUser || currentUser.role === 'AUTHOR') {
@@ -227,6 +250,17 @@ export async function getPostById(id: number, currentUser?: UserPublic | null): 
   return result;
 }
 
+/**
+ * Get a single post by slug (URL-friendly identifier).
+ * 
+ * - Permission-aware: non-authors can only see published posts
+ * - Cached for published posts to improve performance
+ * 
+ * @param slug - Post slug
+ * @param currentUser - Current user for permission check
+ * @returns Post with author and categories
+ * @throws AppError(404) if not found or no permission
+ */
 export async function getPostBySlug(slug: string, currentUser?: UserPublic | null): Promise<PostWithAuthor> {
   // Check cache first (only for public/published posts)
   if (!currentUser || currentUser.role === 'AUTHOR') {
@@ -282,6 +316,18 @@ export async function getPostBySlug(slug: string, currentUser?: UserPublic | nul
   return result;
 }
 
+/**
+ * Create a new blog post.
+ * 
+ * - Auto-generates slug from title if not provided
+ * - Ensures slug uniqueness by appending timestamp if needed
+ * - Sets publishedAt when status is PUBLISHED
+ * - Invalidates relevant caches
+ * 
+ * @param input - Post data (title, content, excerpt, etc.)
+ * @param authorId - ID of the post author
+ * @returns Created post with author and categories
+ */
 export async function createPost(
   input: PostCreateInput,
   authorId: string
@@ -337,6 +383,21 @@ export async function createPost(
   return result;
 }
 
+/**
+ * Update an existing blog post.
+ * 
+ * - Permission check: only author, ADMIN, or EDITOR can update
+ * - Auto-regenerates slug if title changes and no slug provided
+ * - Sets publishedAt when status changes to PUBLISHED
+ * - Invalidates relevant caches
+ * 
+ * @param id - Post ID to update
+ * @param input - Fields to update
+ * @param currentUser - Current user for permission check
+ * @returns Updated post with author and categories
+ * @throws AppError(404) if post not found
+ * @throws AppError(403) if user lacks permission
+ */
 export async function updatePost(
   id: number,
   input: PostUpdateInput,
@@ -424,6 +485,16 @@ export async function updatePost(
   return result;
 }
 
+/**
+ * Delete a blog post.
+ * 
+ * - Permission check: only author, ADMIN, or EDITOR can delete
+ * - Invalidates relevant caches after deletion
+ * 
+ * @param id - Post ID to delete
+ * @param currentUser - Current user for permission check
+ * @throws AppError(403) if user lacks permission
+ */
 export async function deletePost(id: number, currentUser?: UserPublic): Promise<void> {
   // 权限检查
   if (currentUser) {
@@ -448,6 +519,13 @@ export async function deletePost(id: number, currentUser?: UserPublic): Promise<
   invalidatePostCache(id);
 }
 
+/**
+ * Publish a blog post (change status to PUBLISHED).
+ * Sets publishedAt timestamp to now.
+ * 
+ * @param id - Post ID to publish
+ * @returns Updated post
+ */
 export async function publishPost(id: number): Promise<PostWithAuthor> {
   const post = await prisma.post.update({
     where: { id },
@@ -480,6 +558,13 @@ export async function publishPost(id: number): Promise<PostWithAuthor> {
   return result;
 }
 
+/**
+ * Unpublish a blog post (change status to DRAFT).
+ * Clears publishedAt timestamp.
+ * 
+ * @param id - Post ID to unpublish
+ * @returns Updated post
+ */
 export async function unpublishPost(id: number): Promise<PostWithAuthor> {
   const post = await prisma.post.update({
     where: { id },
@@ -512,6 +597,15 @@ export async function unpublishPost(id: number): Promise<PostWithAuthor> {
   return result;
 }
 
+/**
+ * Get archive of posts grouped by year.
+ * 
+ * - Permission-aware: non-authenticated users only see published posts
+ * - Cached for performance on public requests
+ * 
+ * @param currentUser - Current user for permission check
+ * @returns Array of years with their posts
+ */
 export async function getArchive(currentUser?: UserPublic | null) {
   // Only cache public archive (no user or non-admin user)
   const shouldCache = !currentUser || currentUser.role === 'AUTHOR';
