@@ -16,8 +16,21 @@ import { swaggerSpec } from './swagger';
 dotenv.config();
 
 const app = express();
+
+// #38: 环境配置，避免硬编码
+const isDevelopment = process.env.NODE_ENV !== 'production';
 const PORT = process.env.PORT || 3000;
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'];
+
+// ALLOWED_ORIGINS: 开发环境允许 localhost，生产环境必须显式配置
+const DEFAULT_DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:3000'];
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : (isDevelopment ? DEFAULT_DEV_ORIGINS : []);
+
+// 生产环境检查
+if (!isDevelopment && ALLOWED_ORIGINS.length === 0) {
+  console.warn('⚠️  WARNING: ALLOWED_ORIGINS not set in production mode');
+}
 
 // Security headers middleware
 app.use((_req, res, next) => {

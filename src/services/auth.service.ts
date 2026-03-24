@@ -9,6 +9,13 @@ import { AppError } from '../middleware/errorHandler';
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
+/**
+ * Convert a Prisma User object to a public user representation.
+ * Removes sensitive fields like password.
+ * 
+ * @param user - Prisma User object (can be partial from select queries)
+ * @returns UserPublic object safe for API responses
+ */
 function toUserPublic(user: any): UserPublic {
   return {
     id: user.id,
@@ -22,6 +29,17 @@ function toUserPublic(user: any): UserPublic {
   };
 }
 
+/**
+ * Register a new user account.
+ * 
+ * - First user is automatically promoted to ADMIN
+ * - Subsequent users get AUTHOR role
+ * - Password is hashed before storage
+ * 
+ * @param input - Registration data (email, password, name)
+ * @returns Authentication response with user info and tokens
+ * @throws AppError(409) if email is already registered
+ */
 export async function register(input: RegisterInput): Promise<AuthResponse> {
   // Check if user exists
   const existingUser = await prisma.user.findUnique({
@@ -64,6 +82,13 @@ export async function register(input: RegisterInput): Promise<AuthResponse> {
   };
 }
 
+/**
+ * Authenticate user with email and password.
+ * 
+ * @param input - Login credentials (email, password, optional rememberMe)
+ * @returns Authentication response with user info and tokens
+ * @throws AppError(401) if credentials are invalid
+ */
 export async function login(input: LoginInput): Promise<AuthResponse> {
   // Find user
   const user = await prisma.user.findUnique({
@@ -96,6 +121,13 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   };
 }
 
+/**
+ * Refresh authentication tokens using a valid refresh token.
+ * 
+ * @param refreshToken - The refresh token to use
+ * @returns New access and refresh tokens with expiry info
+ * @throws AppError(401) if refresh token is invalid or user not found
+ */
 export async function refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
   // Verify the refresh token
   const payload = verifyToken(refreshToken);
@@ -125,6 +157,12 @@ export async function refreshTokens(refreshToken: string): Promise<{ accessToken
   };
 }
 
+/**
+ * Get the current user by ID.
+ * 
+ * @param userId - The user's unique identifier
+ * @returns UserPublic object or null if not found
+ */
 export async function getCurrentUser(userId: string): Promise<UserPublic | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -143,6 +181,18 @@ export async function getCurrentUser(userId: string): Promise<UserPublic | null>
   return user ? toUserPublic(user) : null;
 }
 
+/**
+ * Update user profile information.
+ * 
+ * - Supports updating name, bio, avatar, and email
+ * - Email changes are checked for duplicates
+ * - Invalidates user cache after update
+ * 
+ * @param userId - The user's unique identifier
+ * @param data - Fields to update (partial)
+ * @returns Updated user object
+ * @throws AppError(409) if new email is already in use
+ */
 export async function updateProfile(
   userId: string,
   data: { name?: string; bio?: string; avatar?: string; email?: string }

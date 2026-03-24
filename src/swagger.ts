@@ -1,5 +1,9 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 
+// #39: 动态获取服务器 URL
+const isProduction = process.env.NODE_ENV === 'production';
+const API_URL = process.env.API_URL || (isProduction ? 'http://47.253.190.162/api' : 'http://localhost:3000/api');
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
@@ -18,12 +22,8 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: 'http://localhost:3000/api',
-        description: 'Development server',
-      },
-      {
-        url: 'http://47.253.190.162/api',
-        description: 'Production server',
+        url: API_URL,
+        description: isProduction ? 'Production server' : 'Development server',
       },
     ],
     components: {
