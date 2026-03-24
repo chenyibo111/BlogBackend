@@ -3,6 +3,7 @@ import fs from 'fs';
 import prisma from '../utils/prisma';
 import { hashPassword, comparePassword } from '../utils/password';
 import { generateAccessToken, generateRefreshToken, getTokenExpiryInSeconds, verifyToken } from '../utils/jwt';
+import { userCacheUtil } from '../utils/userCache';
 import type { RegisterInput, LoginInput, AuthResponse, UserPublic } from '../types';
 import { AppError } from '../middleware/errorHandler';
 
@@ -174,6 +175,9 @@ export async function updateProfile(
       updatedAt: true,
     },
   });
+
+  // Invalidate user cache (#18: 用户信息更新时清除缓存)
+  userCacheUtil.invalidate(userId);
 
   return toUserPublic(user);
 }

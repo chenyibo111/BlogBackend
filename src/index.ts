@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
+import cookieParser from 'cookie-parser';
 
 import authRoutes from './routes/auth.routes';
 import postRoutes from './routes/post.routes';
@@ -78,6 +79,9 @@ app.use(cors({
 }));
 
 app.use(limiter);
+
+// #12: Cookie parser for HttpOnly cookies
+app.use(cookieParser());
 
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
