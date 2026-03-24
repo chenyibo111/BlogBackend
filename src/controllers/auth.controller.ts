@@ -2,6 +2,16 @@ import type { Request, Response, NextFunction } from 'express';
 import * as authService from '../services/auth.service';
 import type { AuthRequest } from '../types';
 
+// #12: Cookie 配置
+const isProduction = process.env.NODE_ENV === 'production';
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: 'lax' as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  path: '/',
+};
+
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password, name } = req.body;
@@ -19,6 +29,13 @@ export async function register(req: Request, res: Response, next: NextFunction) 
     }
 
     const result = await authService.register({ email, password, name });
+
+    // #12: 设置 HttpOnly Cookie
+    res.cookie('accessToken', result.tokens.accessToken, {
+      ...COOKIE_OPTIONS,
+      maxAge: result.tokens.expiresIn * 1000,
+    });
+    res.cookie('refreshToken', result.tokens.refreshToken, COOKIE_OPTIONS);
 
     res.status(201).json({
       success: true,
@@ -47,6 +64,16 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     }
 
     const result = await authService.login({ email, password, rememberMe });
+
+    // #12: 设置 HttpOnly Cookie
+    res.cookie('accessToken', result.tokens.accessToken, {
+      ...COOKIE_OPTIONS,
+      maxAge: result.tokens.expiresIn * 1000,
+    });
+    res.cookie('refreshToken', result.tokens.refreshToken, {
+      ...COOKIE_OPTIONS,
+      maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000, // 30 days or 7 days
+    });
 
     res.json({
       success: true,
@@ -161,7 +188,8 @@ export async function uploadAvatar(req: Request & AuthRequest, res: Response, ne
 
 export async function refreshToken(req: Request, res: Response, next: NextFunction) {
   try {
-    const { refreshToken } = req.body;
+    // #12: 支持从 Cookie 或 Body 获取 refresh token
+    const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
 
     if (!refreshToken) {
       res.status(400).json({
@@ -176,9 +204,40 @@ export async function refreshToken(req: Request, res: Response, next: NextFuncti
 
     const tokens = await authService.refreshTokens(refreshToken);
 
+    // #12: 更新 HttpOnly Cookie
+    res.cookie('accessToken', tokens.accessToken, {
+      ...COOKIE_OPTIONS,
+      maxAge: tokens.expiresIn * 1000,
+    });
+    res.cookie('refreshToken', tokens.refreshToken, COOKIE_OPTIONS);
+
     res.json({
       success: true,
       data: tokens,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function logout(req: Request & AuthRequest, res: Response, next: NextFunction) {
+  try {
+    // #12: 支持从 Cookie 或 Header 获取 token
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.substring(7) || req.cookies?.accessToken;
+    
+    if (token) {
+      await authService.logout(token);
+    }
+
+    // #12: 清除 Cookie
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
+
+    res.json({
+      success: true,
+      data: { message: 'Logged out successfully' },
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

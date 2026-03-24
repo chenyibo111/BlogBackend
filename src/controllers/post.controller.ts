@@ -14,6 +14,9 @@ export async function listPosts(req: Request & AuthRequest, res: Response, next:
       limit: parseInt(req.query.limit as string) || 20,
       sortBy: (req.query.sortBy as string) || 'publishedAt',
       order: ((req.query.order as any) || 'desc') as 'asc' | 'desc',
+      // #19: 游标分页参数
+      cursor: req.query.cursor as string,
+      cursorId: req.query.cursorId ? parseInt(req.query.cursorId as string) : undefined,
     };
 
     // 权限控制：未登录用户只能看已发布文章

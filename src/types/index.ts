@@ -48,6 +48,9 @@ export interface PostFilter {
   limit?: number;
   sortBy?: string;
   order?: 'asc' | 'desc';
+  // Cursor pagination (#19)
+  cursor?: string;  // 游标值（通常是最后一条记录的 ID 或 createdAt）
+  cursorId?: number; // 用于游标分页的 ID
 }
 
 // Auth types
@@ -93,6 +96,14 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// Cursor pagination response (#19: 游标分页响应)
+export interface CursorPaginatedResponse<T> {
+  items: T[];
+  nextCursor?: string | null;  // 下一页的游标
+  hasMore: boolean;            // 是否还有更多数据
+  limit: number;
 }
 
 export interface ErrorResponse {

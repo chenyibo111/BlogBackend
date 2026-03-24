@@ -42,6 +42,8 @@ export async function getPosts(filter: PostFilter, currentUser?: UserPublic | nu
     limit = 20,
     sortBy = 'publishedAt',
     order = 'desc',
+    cursor,
+    cursorId,
   } = filter;
 
   const where: any = {};
@@ -79,8 +81,29 @@ export async function getPosts(filter: PostFilter, currentUser?: UserPublic | nu
     ];
   }
 
-  const [posts, total] = await Promise.all([
-    prisma.post.findMany({
+  // #19: 游标分页优化
+  // 如果提供了 cursor，使用游标分页；否则使用传统的 offset 分页
+  const useCursorPagination = cursor || cursorId;
+  
+  let posts: any[];
+  let total: number;
+  let hasMore = false;
+  let nextCursor: string | null = null;
+
+  if (useCursorPagination) {
+    // 游标分页：基于 cursor 过滤
+    const cursorValue = cursorId ? cursorId : cursor ? parseInt(cursor) : null;
+    
+    if (cursorValue && !isNaN(cursorValue)) {
+      // 使用 cursor + sortBy 组合条件
+      // 这里简化为基于 ID 的游标分页
+      where.id = order === 'desc' 
+        ? { lt: cursorValue }  // 降序：取比 cursor 小的
+        : { gt: cursorValue }; // 升序：取比 cursor 大的
+    }
+
+    // 取 limit + 1 条来判断 hasMore
+    const items = await prisma.post.findMany({
       where,
       include: {
         author: {
@@ -97,12 +120,47 @@ export async function getPosts(filter: PostFilter, currentUser?: UserPublic | nu
         },
         categories: true,
       },
-      skip: (page - 1) * limit,
-      take: limit,
+      take: limit + 1,
       orderBy: { [sortBy]: order },
-    }),
-    prisma.post.count({ where }),
-  ]);
+    });
+
+    hasMore = items.length > limit;
+    posts = hasMore ? items.slice(0, limit) : items;
+    
+    // 设置下一页的 cursor
+    if (hasMore && posts.length > 0) {
+      nextCursor = String(posts[posts.length - 1].id);
+    }
+
+    // 游标分页不需要 total（可以单独查询）
+    total = await prisma.post.count({ where: { ...where, id: undefined } });
+  } else {
+    // 传统 offset 分页（保留兼容性）
+    [posts, total] = await Promise.all([
+      prisma.post.findMany({
+        where,
+        include: {
+          author: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              avatar: true,
+              bio: true,
+              role: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+          categories: true,
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { [sortBy]: order },
+      }),
+      prisma.post.count({ where }),
+    ]);
+  }
 
   return {
     items: posts as PostWithAuthor[],
@@ -110,6 +168,9 @@ export async function getPosts(filter: PostFilter, currentUser?: UserPublic | nu
     page,
     limit,
     totalPages: Math.ceil(total / limit),
+    // 游标分页额外字段
+    nextCursor,
+    hasMore,
   };
 }
 

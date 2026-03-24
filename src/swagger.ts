@@ -34,6 +34,13 @@ const options: swaggerJsdoc.Options = {
           bearerFormat: 'JWT',
           description: 'Enter your JWT token in the format: {token}',
         },
+        // #12: HttpOnly Cookie 认证
+        cookieAuth: {
+          type: 'apiKey',
+          in: 'cookie',
+          name: 'accessToken',
+          description: 'HttpOnly cookie containing JWT access token (set automatically on login)',
+        },
       },
       schemas: {
         User: {
@@ -142,6 +149,9 @@ const options: swaggerJsdoc.Options = {
                 page: { type: 'integer' },
                 limit: { type: 'integer' },
                 totalPages: { type: 'integer' },
+                // #19: 游标分页
+                nextCursor: { type: 'string', nullable: true, description: 'Cursor for next page' },
+                hasMore: { type: 'boolean', description: 'Whether more pages exist' },
               },
             },
           },

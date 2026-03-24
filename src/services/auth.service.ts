@@ -3,6 +3,7 @@ import fs from 'fs';
 import prisma from '../utils/prisma';
 import { hashPassword, comparePassword } from '../utils/password';
 import { generateAccessToken, generateRefreshToken, getTokenExpiryInSeconds, verifyToken } from '../utils/jwt';
+import { userCacheUtil } from '../utils/userCache';
 import type { RegisterInput, LoginInput, AuthResponse, UserPublic } from '../types';
 import { AppError } from '../middleware/errorHandler';
 
@@ -175,6 +176,9 @@ export async function updateProfile(
     },
   });
 
+  // Invalidate user cache (#18: 用户信息更新时清除缓存)
+  userCacheUtil.invalidate(userId);
+
   return toUserPublic(user);
 }
 
@@ -214,4 +218,18 @@ export async function deleteAccount(userId: string): Promise<void> {
     console.error(`[Account] User ${userId} deleted, but some files failed to delete:`, deleteErrors);
     // Could add to cleanup queue for later retry
   }
+}
+
+/**
+ * Logout - add token to blacklist
+ */
+export async function logout(token: string): Promise<void> {
+  const { tokenBlacklist } = await import('../utils/tokenBlacklist');
+  const jwt = await import('jsonwebtoken');
+  
+  // Get token expiry
+  const decoded = jwt.decode(token) as any;
+  const expiresAt = decoded?.exp || Math.floor(Date.now() / 1000) + 7200; // Default 2 hours
+  
+  tokenBlacklist.add(token, expiresAt);
 }

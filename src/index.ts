@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
+import cookieParser from 'cookie-parser';
 
 import authRoutes from './routes/auth.routes';
 import postRoutes from './routes/post.routes';
@@ -17,6 +18,35 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'];
+
+// Security headers middleware
+app.use((_req, res, next) => {
+  // Content Security Policy
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "font-src 'self' https://fonts.gstatic.com; " +
+    "img-src 'self' data: https: blob:; " +
+    "connect-src 'self'; " +
+    "frame-ancestors 'none';"
+  );
+  
+  // Prevent clickjacking
+  res.setHeader('X-Frame-Options', 'DENY');
+  
+  // Prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  // XSS Protection
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Referrer Policy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  next();
+});
 
 // Rate limiter
 const limiter = rateLimit({
@@ -49,6 +79,9 @@ app.use(cors({
 }));
 
 app.use(limiter);
+
+// #12: Cookie parser for HttpOnly cookies
+app.use(cookieParser());
 
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
