@@ -37,6 +37,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^5.22.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
@@ -48,7 +49,9 @@
     "@types/supertest": "^7.2.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.1",
     "nodemon": "^3.1.9",
+    "pg": "^8.20.0",
     "prisma": "^5.22.0",
     "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
